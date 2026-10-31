@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Facial Expression Detection</title>
+<style>
+  :root { --bg:#0b0f17; --card:#131a26; --card2:#18202f; --line:#222c3d; --text:#e8edf5; --muted:#8a96ab; --brand:#7c9cff; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; background:radial-gradient(circle at 15% 0%,#17223d 0%,var(--bg) 55%) fixed; color:var(--text); min-height:100vh; padding:28px 20px 40px; }
+  .wrap { max-width:1200px; margin:0 auto; }
+  header { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+  h1 { font-size:22px; font-weight:650; letter-spacing:-.01em; }
+  h1 span { color:var(--muted); font-weight:400; }
+  .head-right { display:flex; gap:10px; align-items:center; }
+  .tabs { display:flex; background:var(--card); border:1px solid var(--line); border-radius:99px; padding:4px; }
+  .tab { border:0; background:none; color:var(--muted); font:inherit; font-size:14px; padding:7px 16px; border-radius:99px; cursor:pointer; }
+  .tab.on { background:var(--brand); color:#0b1020; font-weight:600; }
+  .status { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); background:var(--card); border:1px solid var(--line); padding:7px 12px; border-radius:99px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:#64748b; }
+  .dot.live { background:#22c55e; animation:pulse 1.6s infinite; }
+  @keyframes pulse { 0% { box-shadow:0 0 0 0 rgba(34,197,94,.6); } 70% { box-shadow:0 0 0 8px rgba(34,197,94,0); } 100% { box-shadow:0 0 0 0 rgba(34,197,94,0); } }
+
+  main { display:grid; grid-template-columns:1fr 320px; gap:20px; }
+  .col { display:flex; flex-direction:column; gap:16px; min-width:0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:18px; }
+  .card h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:600; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
+
+  .stage { position:relative; border-radius:20px; overflow:hidden; background:#000; border:1px solid var(--line); aspect-ratio:4/3; }
+  video { width:100%; height:100%; object-fit:cover; transform:scaleX(-1); display:block; }
+  #overlay { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .overlay-msg { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; color:var(--muted); font-size:15px; padding:20px; pointer-events:none; }
+  .flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; }
+  .flash.go { animation:flash .5s ease-out; }
+  @keyframes flash { 0% { opacity:.85; } 100% { opacity:0; } }
+
+  .controls { display:flex; gap:8px; flex-wrap:wrap; }
+  .chip { display:flex; align-items:center; gap:7px; border:1px solid var(--line); background:var(--card); color:var(--text); font:inherit; font-size:13.5px; padding:8px 14px; border-radius:99px; cursor:pointer; transition:.15s; }
+  .chip:hover { border-color:#3a4760; }
+  .chip.on { background:#1e2a45; border-color:var(--brand); color:#cfdbff; }
+  .chip .sw { width:26px; height:15px; border-radius:99px; background:#2a3446; position:relative; transition:.15s; }
+  .chip .sw::after { content:""; position:absolute; top:2px; left:2px; width:11px; height:11px; border-radius:50%; background:#8a96ab; transition:.15s; }
+  .chip.on .sw { background:var(--brand); }
+  .chip.on .sw::after { left:13px; background:#0b1020; }
+
+  .row { display:grid; grid-template-columns:24px 1fr 42px; align-items:center; gap:10px; font-size:14px; margin-bottom:9px; }
+  .row .name { margin-bottom:4px; }
+  .track { height:7px; background:#1d2636; border-radius:99px; overflow:hidden; }
+  .fill { height:100%; width:0; border-radius:99px; transition:width .3s ease; }
+  .row .val { text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; font-size:13px; }
+  .row.top .name { font-weight:650; }
+
+  .mood { display:flex; align-items:center; gap:12px; }
+  .mood .big { font-size:34px; }
+  .mood .t1 { font-size:17px; font-weight:600; }
+  .mood .t2 { font-size:13px; color:var(--muted); margin-top:2px; }
+
+  #camImg { width:100%; aspect-ratio:1; border-radius:12px; object-fit:cover; display:none; background:#000; }
+  .hint { font-size:13px; color:var(--muted); line-height:1.5; }
+  .legend { display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-top:8px; }
+  .legend .bar { flex:1; height:6px; margin:4px 8px 0; border-radius:99px; background:linear-gradient(90deg,#00f,#0ff,#0f0,#ff0,#f00); }
+
+  #timeline { width:100%; height:150px; display:block; }
+  .summary { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+  .pill { font-size:12.5px; padding:4px 10px; border-radius:99px; background:var(--card2); border:1px solid var(--line); }
+  .btn { border:1px solid var(--line); background:var(--card2); color:var(--text); font:inherit; font-size:12px; padding:5px 10px; border-radius:8px; cursor:pointer; text-transform:none; letter-spacing:0; }
+  .btn:hover { border-color:#3a4760; }
+  .btns { display:flex; gap:6px; }
+
+  .gallery { display:flex; gap:10px; overflow-x:auto; padding-bottom:4px; }
+  .gallery a { flex:0 0 auto; }
+  .gallery img { height:96px; border-radius:10px; border:1px solid var(--line); display:block; }
+
+  /* Challenge game */
+  .game { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:space-between; padding:18px; pointer-events:none; }
+  .game.on { display:flex; }
+  .hud { display:flex; gap:10px; }
+  .hud div { background:rgba(10,14,22,.75); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.08); padding:7px 14px; border-radius:99px; font-size:14px; font-weight:600; }
+  .prompt { background:rgba(10,14,22,.78); backdrop-filter:blur(10px); border:2px solid var(--brand); border-radius:22px; padding:14px 28px 16px; text-align:center; min-width:280px; }
+  .prompt .p1 { font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; }
+  .prompt .p2 { font-size:34px; font-weight:750; margin:4px 0 10px; }
+  .timer { height:8px; background:#1d2636; border-radius:99px; overflow:hidden; }
+  .timer div { height:100%; background:var(--brand); width:100%; transition:width .15s linear; }
+  .toast { position:absolute; top:42%; left:50%; transform:translate(-50%,-50%); font-size:40px; font-weight:800; opacity:0; text-shadow:0 4px 24px rgba(0,0,0,.6); }
+  .toast.go { animation:pop 1s ease-out; }
+  @keyframes pop { 0% { opacity:0; transform:translate(-50%,-30%) scale(.8); } 20% { opacity:1; transform:translate(-50%,-50%) scale(1.1); } 80% { opacity:1; } 100% { opacity:0; transform:translate(-50%,-70%); } }
+  .endcard { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(5,8,14,.72); backdrop-filter:blur(6px); }
+  .endcard.on { display:flex; }
+  .endcard .box { text-align:center; background:var(--card); border:1px solid var(--line); border-radius:22px; padding:30px 40px; }
+  .endcard .score { font-size:56px; font-weight:800; margin:6px 0; }
+  .start { background:var(--brand); color:#0b1020; border:0; font:inherit; font-weight:700; font-size:15px; padding:11px 22px; border-radius:99px; cursor:pointer; margin-top:14px; pointer-events:auto; }
+  .challenge-only { display:none; }
+  body.challenge .challenge-only { display:block; }
+  body.challenge .live-only { display:none; }
+
+  footer { text-align:center; margin-top:26px; font-size:12px; color:var(--muted); }
+  @media (max-width:900px) { main { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Facial Expression Detection <span>· ResNet18 on RAF-DB</span></h1>
+  <div class="head-right">
+    <div class="tabs"><button class="tab on" data-mode="live">🎥 Live</button><button class="tab" data-mode="challenge">🎮 Challenge</button></div>
+    <div class="status"><div class="dot" id="dot"></div><span id="statusText">Starting camera…</span></div>
+  </div>
+</header>
+
+<main>
+  <div class="col">
+    <div class="stage" id="stage">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div class="overlay-msg" id="msg">Allow camera access to begin</div>
+      <div class="flash" id="flash"></div>
+      <div class="game" id="game">
+        <div class="hud"><div id="hRound">Round 1/8</div><div id="hScore">Score 0</div><div id="hStreak">🔥 0</div></div>
+        <div class="prompt"><div class="p1">Show me</div><div class="p2" id="gTarget">😄 Happy</div><div class="timer"><div id="gTimer"></div></div></div>
+      </div>
+      <div class="toast" id="toast"></div>
+      <div class="endcard" id="endcard"><div class="box">
+        <div class="hint" id="endTitle">Expression Challenge</div>
+        <div class="score" id="endScore">🎮</div>
+        <div class="hint" id="endSub">Match 8 expressions as fast as you can.<br>Hold each one until it's detected.</div>
+        <button class="start" id="startBtn">Start challenge</button>
+      </div></div>
+    </div>
+
+    <div class="controls live-only">
+      <button class="chip" data-opt="emoji"><span class="sw"></span>😎 Emoji mask</button>
+      <button class="chip" data-opt="explain"><span class="sw"></span>🔥 Explain (Grad-CAM)</button>
+      <button class="chip" data-opt="shutter"><span class="sw"></span>📸 Smile shutter</button>
+    </div>
+
+    <div class="card">
+      <h2><span>📈 Emotion timeline · last 60 s</span><span class="btns"><button class="btn" id="csvBtn">Download CSV</button><button class="btn" id="resetBtn">Reset</button></span></h2>
+      <canvas id="timeline"></canvas>
+      <div class="summary" id="summary"><span class="hint">Session summary appears here.</span></div>
+    </div>
+
+    <div class="card live-only" id="galleryCard" style="display:none">
+      <h2><span>📸 Smile shots</span><span class="hint" style="text-transform:none;letter-spacing:0">click to download</span></h2>
+      <div class="gallery" id="gallery"></div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card">
+      <h2>Main face</h2>
+      <div id="bars"></div>
+    </div>
+    <div class="card">
+      <h2>👥 Room mood</h2>
+      <div class="mood"><span class="big" id="moodEmoji">–</span><div><div class="t1" id="moodText">No faces yet</div><div class="t2" id="moodSub">Averaged over everyone in frame</div></div></div>
+    </div>
+    <div class="card live-only">
+      <h2>🔥 What the model sees</h2>
+      <img id="camImg" alt="Grad-CAM heatmap">
+      <div class="legend" id="camLegend" style="display:none"><span>ignored</span><span class="bar"></span><span>decisive</span></div>
+      <p class="hint" id="camHint">Turn on <b>Explain</b> to see which parts of the face the model used for its decision.</p>
+    </div>
+    <div class="card challenge-only">
+      <h2>🏆 High score</h2>
+      <div class="mood"><span class="big">🏆</span><div><div class="t1" id="bestText">0</div><div class="t2">Saved in this browser</div></div></div>
+    </div>
+  </div>
+</main>
+<footer>Frames are processed by the model and never stored. Expressions shown, not feelings inferred.</footer>
+</div>
+
+<script>
+const EMO = {
+  Happy:{e:"😄",c:"#22c55e"}, Surprise:{e:"😮",c:"#f59e0b"}, Neutral:{e:"😐",c:"#94a3b8"}, Sad:{e:"😢",c:"#3b82f6"},
+  Angry:{e:"😠",c:"#ef4444"}, Disgust:{e:"🤢",c:"#84cc16"}, Fear:{e:"😨",c:"#a855f7"}
+};
+const NAMES = Object.keys(EMO), ALPHA = 0.45, SEND_W = 480, INTERVAL = 110, WINDOW_S = 60;
+const $ = id => document.getElementById(id);
+const video = $("video"), overlay = $("overlay"), ctx = overlay.getContext("2d");
+const grab = document.createElement("canvas"), gctx = grab.getContext("2d");
+const opts = { emoji:false, explain:false, shutter:false };
+let mode = "live", tracks = [], nextId = 1, frameNo = 0, samples = [], lastShot = 0, t0 = performance.now();
+
+const store = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+const topOf = p => NAMES.reduce((a, b) => p[a] > p[b] ? a : b);
+const setStatus = (t, live) => { $("statusText").textContent = t; $("dot").classList.toggle("live", live); };
+
+// ---------- UI wiring ----------
+$("bars").innerHTML = NAMES.map(n => `
+  <div class="row" id="r-${n}"><span>${EMO[n].e}</span>
+    <div><div class="name">${n}</div><div class="track"><div class="fill" id="f-${n}" style="background:${EMO[n].c}"></div></div></div>
+    <span class="val" id="v-${n}">–</span></div>`).join("");
+
+document.querySelectorAll(".chip").forEach(ch => ch.onclick = () => {
+  const k = ch.dataset.opt; opts[k] = !opts[k]; ch.classList.toggle("on", opts[k]);
+  if (k === "explain") { $("camHint").style.display = opts.explain ? "none" : "block"; if (!opts.explain) { $("camImg").style.display = "none"; $("camLegend").style.display = "none"; } }
+  if (k === "shutter") $("galleryCard").style.display = opts.shutter || $("gallery").children.length ? "block" : "none";
+});
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => setMode(t.dataset.mode));
+function setMode(m) {
+  mode = m; document.body.classList.toggle("challenge", m === "challenge");
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t.dataset.mode === m));
+  game.state = "idle"; $("game").classList.remove("on"); $("endcard").classList.toggle("on", m === "challenge");
+  showEnd("Expression Challenge", "🎮", "Match 8 expressions as fast as you can.<br>Hold each one until it's detected.", "Start challenge");
+}
+
+// ---------- Face tracking + smoothing (per face) ----------
+function updateTracks(faces) {
+  const used = new Set(), out = [];
+  for (const f of faces) {
+    const [x, y, w, h] = f.box, cx = x + w / 2, cy = y + h / 2;
+    let best = null, bd = Infinity;
+    for (const t of tracks) {
+      if (used.has(t.id)) continue;
+      const d = Math.hypot(t.cx - cx, t.cy - cy);
+      if (d < bd && d < w * 0.6) { bd = d; best = t; }
+    }
+    const t = best || { id: nextId++, smooth: null };
+    used.add(t.id);
+    Object.assign(t, { cx, cy, box: f.box });
+    t.smooth = t.smooth ? Object.fromEntries(NAMES.map(n => [n, ALPHA * f.probs[n] + (1 - ALPHA) * t.smooth[n]])) : { ...f.probs };
+    t.top = topOf(t.smooth);
+    out.push(t);
+  }
+  tracks = out;
+  return out;
+}
+
+// ---------- Drawing on the video ----------
+function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+function draw(size) {
+  const W = overlay.clientWidth, H = overlay.clientHeight, dpr = devicePixelRatio || 1;
+  overlay.width = W * dpr; overlay.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  if (!size) return;
+  const [fw, fh] = size, s = Math.max(W / fw, H / fh), ox = (W - fw * s) / 2, oy = (H - fh * s) / 2;
+  tracks.forEach((t, i) => {
+    let [x, y, w, h] = t.box; x = W - (ox + (x + w) * s); y = oy + y * s; w *= s; h *= s;
+    const col = EMO[t.top].c, L = Math.min(w, h) * 0.22;
+    if (opts.emoji && mode === "live") {
+      ctx.font = `${w * 1.15}px "Apple Color Emoji","Segoe UI Emoji",sans-serif`;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(EMO[t.top].e, x + w / 2, y + h / 2 + h * 0.05);
+    } else {
+      ctx.strokeStyle = col; ctx.lineWidth = i === 0 ? 4 : 3; ctx.lineCap = "round"; ctx.beginPath();
+      [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1]].forEach(([cx, cy, dx, dy]) => {
+        ctx.moveTo(cx + dx * L, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy + dy * L);
+      });
+      ctx.stroke();
+    }
+    const label = `${EMO[t.top].e} ${t.top} ${Math.round(t.smooth[t.top] * 100)}%`;
+    ctx.font = `600 ${i === 0 ? 17 : 14}px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif`;
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    const tw = ctx.measureText(label).width + 22, th = i === 0 ? 32 : 27;
+    let ly = y - th - 8; if (ly < 6) ly = y + h + 8;
+    const lx = Math.min(Math.max(6, x + w / 2 - tw / 2), W - tw - 6);
+    ctx.fillStyle = "rgba(10,14,22,.78)"; roundRect(lx, ly, tw, th, th / 2); ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = "#e8edf5"; ctx.fillText(label, lx + 11, ly + th / 2 + 1);
+  });
+}
+
+// ---------- Side panels ----------
+function updatePanels() {
+  const main = tracks[0];
+  NAMES.forEach(n => {
+    const p = main ? Math.round(main.smooth[n] * 100) : 0;
+    $("f-" + n).style.width = p + "%"; $("v-" + n).textContent = main ? p + "%" : "–";
+    $("r-" + n).classList.toggle("top", !!main && n === main.top);
+  });
+  if (!tracks.length) { $("moodEmoji").textContent = "–"; $("moodText").textContent = "No faces in frame"; $("moodSub").textContent = "Averaged over everyone in frame"; return; }
+  const avg = Object.fromEntries(NAMES.map(n => [n, tracks.reduce((a, t) => a + t.smooth[n], 0) / tracks.length]));
+  const m = topOf(avg);
+  $("moodEmoji").textContent = EMO[m].e;
+  $("moodText").textContent = `${m} · ${Math.round(avg[m] * 100)}%`;
+  $("moodSub").textContent = `${tracks.length} face${tracks.length > 1 ? "s" : ""} in frame`;
+}
+
+// ---------- Timeline ----------
+const tl = $("timeline"), tctx = tl.getContext("2d");
+function drawTimeline() {
+  const W = tl.clientWidth, H = tl.clientHeight, dpr = devicePixelRatio || 1, now = (performance.now() - t0) / 1000;
+  tl.width = W * dpr; tl.height = H * dpr; tctx.setTransform(dpr, 0, 0, dpr, 0, 0); tctx.clearRect(0, 0, W, H);
+  const padL = 30, padB = 18, gw = W - padL - 4, gh = H - padB - 6;
+  tctx.font = "11px -apple-system,sans-serif"; tctx.fillStyle = "#5d6a80"; tctx.strokeStyle = "#1f2838"; tctx.lineWidth = 1;
+  [0, 0.5, 1].forEach(v => { const y = 6 + gh * (1 - v); tctx.beginPath(); tctx.moveTo(padL, y); tctx.lineTo(W - 4, y); tctx.stroke(); tctx.fillText(`${v * 100}%`, 0, y + 4); });
+  [60, 30, 0].forEach(sec => tctx.fillText(sec ? `-${sec}s` : "now", padL + gw * (1 - sec / WINDOW_S) - (sec ? 10 : 22), H - 3));
+  const pts = samples.filter(s => now - s.t <= WINDOW_S);
+  NAMES.forEach(n => {
+    tctx.strokeStyle = EMO[n].c; tctx.lineWidth = 2; tctx.beginPath(); let started = false, prev = null;
+    pts.forEach(s => {
+      const x = padL + gw * (1 - (now - s.t) / WINDOW_S), y = 6 + gh * (1 - (s.probs ? s.probs[n] : 0));
+      if (!s.probs || (prev && s.t - prev > 1.5)) { started = false; }  // gap when no face
+      if (s.probs) { started ? tctx.lineTo(x, y) : tctx.moveTo(x, y); started = true; }
+      prev = s.t;
+    });
+    tctx.stroke();
+  });
+}
+function updateSummary() {
+  const withFace = samples.filter(s => s.top);
+  if (!withFace.length) { $("summary").innerHTML = '<span class="hint">Session summary appears here.</span>'; return; }
+  const counts = {}; withFace.forEach(s => counts[s.top] = (counts[s.top] || 0) + 1);
+  const secs = ((performance.now() - t0) / 1000) | 0;
+  $("summary").innerHTML = `<span class="pill">⏱ ${Math.floor(secs / 60)}m ${secs % 60}s</span>` +
+    Object.entries(counts).sort((a, b) => b[1] - a[1])
+      .map(([n, c]) => `<span class="pill" style="border-color:${EMO[n].c}55">${EMO[n].e} ${n} ${Math.round(100 * c / withFace.length)}%</span>`).join("");
+}
+$("csvBtn").onclick = () => {
+  const rows = ["time_s,faces,top," + NAMES.join(",")].concat(samples.map(s =>
+    [s.t.toFixed(2), s.faces, s.top || "", ...NAMES.map(n => s.probs ? s.probs[n].toFixed(4) : "")].join(",")));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv" }));
+  a.download = `emotion_session_${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.csv`; a.click();
+};
+$("resetBtn").onclick = () => { samples = []; t0 = performance.now(); updateSummary(); drawTimeline(); };
+
+// ---------- Smile shutter ----------
+function takePhoto(label) {
+  const c = document.createElement("canvas"); c.width = video.videoWidth; c.height = video.videoHeight;
+  const g = c.getContext("2d"); g.translate(c.width, 0); g.scale(-1, 1); g.drawImage(video, 0, 0); g.setTransform(1, 0, 0, 1, 0, 0);
+  g.font = `600 ${Math.round(c.height / 18)}px -apple-system,sans-serif`; g.fillStyle = "rgba(0,0,0,.45)";
+  g.fillRect(0, c.height - c.height / 9, c.width, c.height / 9); g.fillStyle = "#fff"; g.textBaseline = "middle";
+  g.fillText(label, c.height / 30, c.height - c.height / 18);
+  const url = c.toDataURL("image/jpeg", 0.9), a = document.createElement("a");
+  a.href = url; a.download = `smile_${Date.now()}.jpg`; a.innerHTML = `<img src="${url}" alt="smile shot">`;
+  $("gallery").prepend(a); while ($("gallery").children.length > 12) $("gallery").lastChild.remove();
+  $("galleryCard").style.display = "block";
+  $("flash").classList.remove("go"); void $("flash").offsetWidth; $("flash").classList.add("go");
+}
+
+// ---------- Challenge game ----------
+const ROUNDS = 8, ROUND_S = 6, THRESH = { Fear: 0.4, Disgust: 0.4 };  // rarer classes are harder for the model
+const game = { state: "idle", round: 0, score: 0, streak: 0, target: null, start: 0, hold: 0, pauseUntil: 0 };
+$("bestText").textContent = store.get("fer_best", 0);
+function showEnd(title, score, sub, btn) { $("endTitle").textContent = title; $("endScore").textContent = score; $("endSub").innerHTML = sub; $("startBtn").textContent = btn; }
+function toast(text, color) { const t = $("toast"); t.textContent = text; t.style.color = color; t.classList.remove("go"); void t.offsetWidth; t.classList.add("go"); }
+$("startBtn").onclick = () => {
+  Object.assign(game, { state: "playing", round: 0, score: 0, streak: 0, target: null });
+  $("endcard").classList.remove("on"); $("game").classList.add("on"); nextRound();
+};
+function nextRound() {
+  if (game.round >= ROUNDS) return finish();
+  game.round++; const choices = NAMES.filter(n => n !== game.target);
+  game.target = choices[Math.floor(Math.random() * choices.length)];
+  game.start = performance.now(); game.hold = 0; game.pauseUntil = 0;
+  $("gTarget").textContent = `${EMO[game.target].e} ${game.target}`;
+  document.querySelector(".prompt").style.borderColor = EMO[game.target].c;
+  $("gTimer").style.background = EMO[game.target].c;
+  hud();
+}
+function hud() { $("hRound").textContent = `Round ${game.round}/${ROUNDS}`; $("hScore").textContent = `Score ${game.score}`; $("hStreak").textContent = `🔥 ${game.streak}`; }
+function gameTick() {
+  if (mode !== "challenge" || game.state !== "playing") return;
+  const now = performance.now();
+  if (game.pauseUntil) { if (now >= game.pauseUntil) nextRound(); return; }
+  const left = ROUND_S - (now - game.start) / 1000, main = tracks[0];
+  $("gTimer").style.width = Math.max(0, left / ROUND_S * 100) + "%";
+  const p = main ? main.smooth[game.target] : 0;
+  game.hold = p >= (THRESH[game.target] || 0.55) ? game.hold + 1 : 0;
+  if (game.hold >= 3) {
+    game.streak++; const pts = 100 + Math.round(left * 30) + (game.streak - 1) * 25;
+    game.score += pts; toast(`✅ +${pts}`, "#22c55e"); game.pauseUntil = now + 1100; hud();
+  } else if (left <= 0) {
+    game.streak = 0; toast("⏱ Missed!", "#ef4444"); game.pauseUntil = now + 1100; hud();
+  }
+}
+function finish() {
+  game.state = "done"; $("game").classList.remove("on");
+  const best = store.get("fer_best", 0), isBest = game.score > best;
+  if (isBest) { store.set("fer_best", game.score); $("bestText").textContent = game.score; }
+  showEnd(isBest ? "🎉 New high score!" : "Final score", game.score, `Best: ${Math.max(best, game.score)}`, "Play again");
+  $("endcard").classList.add("on");
+}
+
+// ---------- Main loop ----------
+function handle(res) {
+  const faces = res.faces || [];
+  updateTracks(faces);
+  $("msg").style.display = faces.length ? "none" : "flex";
+  if (!faces.length) $("msg").textContent = "No face detected — look at the camera";
+  draw(res.size); updatePanels();
+
+  const main = tracks[0];
+  samples.push({ t: (performance.now() - t0) / 1000, faces: faces.length, top: main ? main.top : null, probs: main ? { ...main.smooth } : null });
+  if (samples.length > 20000) samples.shift();
+  drawTimeline(); if (frameNo % 8 === 0) updateSummary();
+
+  if (faces[0] && faces[0].cam && opts.explain) {
+    $("camImg").src = faces[0].cam; $("camImg").style.display = "block"; $("camLegend").style.display = "flex";
+    $("camImg").title = `Regions behind "${faces[0].cam_label}"`;
+  }
+  if (opts.shutter && mode === "live" && main && main.top === "Happy" && main.smooth.Happy > 0.85 && performance.now() - lastShot > 3000) {
+    lastShot = performance.now(); takePhoto(`😄 Happy ${Math.round(main.smooth.Happy * 100)}%`);
+  }
+  gameTick();
+}
+
+async function loop() {
+  try {
+    if (video.videoWidth) {
+      grab.width = SEND_W; grab.height = Math.round(SEND_W * video.videoHeight / video.videoWidth);
+      gctx.drawImage(video, 0, 0, grab.width, grab.height);
+      const blob = await new Promise(r => grab.toBlob(r, "image/jpeg", 0.8));
+      const wantCam = opts.explain && mode === "live" && frameNo % 5 === 0;
+      const res = await (await fetch("predict" + (wantCam ? "?cam=1" : ""), { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: blob })).json();
+      frameNo++; handle(res); setStatus("Live", true);
+    }
+  } catch (e) { setStatus("Server not reachable", false); }
+  setTimeout(loop, INTERVAL);
+}
+window.addEventListener("resize", drawTimeline);
+
+// Camera only works on secure origins: send 0.0.0.0 / 127.0.0.1 visitors to localhost
+if (!window.isSecureContext && ["0.0.0.0", "127.0.0.1"].includes(location.hostname)) {
+  location.replace(location.href.replace(location.hostname, "localhost"));
+} else if (!navigator.mediaDevices) {
+  setStatus("Camera unavailable", false);
+  $("msg").textContent = "Camera needs a secure page. Open http://localhost:7860";
+} else navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }, audio: false })
+  .then(stream => { video.srcObject = stream; $("msg").textContent = "Looking for a face…"; loop(); })
+  .catch(() => { setStatus("Camera blocked", false); $("msg").textContent = "Camera access was denied. Allow it in the browser's address bar and reload."; });
+drawTimeline();
+</script>
+</body>
+</html>

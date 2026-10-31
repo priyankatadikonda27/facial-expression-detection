@@ -1,0 +1,17 @@
+# Dataset — RAF-DB licence forbids redistribution, never commit it
+DATASET/
+DATASET.zip
+*.csv
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# OS / editor
+.DS_Store
+.vscode/
+.gradio/
+flagged/
+models/best_model_v1.pth
