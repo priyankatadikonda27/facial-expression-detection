@@ -1,0 +1,9 @@
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+
+/models/*
+  Cache-Control: public, max-age=86400
+
+/ort/*
+  Cache-Control: public, max-age=86400
